@@ -1,0 +1,239 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STORM CITY</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #171b20;
+  font-family: Arial, sans-serif;
+}
+#game { width: 100vw; height: 100vh; }
+#info {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  color: white;
+  background: #10151ddd;
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid #ffffff22;
+}
+#info strong { color: #9d83ff; font-size: 20px; }
+#status { font-size: 13px; margin-top: 8px; color: #cbd0d8; }
+#controls {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  color: white;
+  background: #10151ddd;
+  padding: 12px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="info">
+  <strong>STORM CITY</strong>
+  <div>Prototype 3D — Première construction</div>
+  <div id="status">Chargement du bâtiment...</div>
+</div>
+<div id="controls">Z / Q / S / D : Déplacement<br>Flèches : Déplacement</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+<script>
+const statusText = document.getElementById("status");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x91b5cf);
+scene.fog = new THREE.Fog(0x91b5cf, 100, 260);
+
+const camera = new THREE.PerspectiveCamera(
+  65, window.innerWidth / window.innerHeight, 0.1, 500
+);
+camera.position.set(30, 20, 35);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.getElementById("game").appendChild(renderer.domElement);
+
+// Lumière naturelle
+scene.add(new THREE.HemisphereLight(0xdcecff, 0x555044, 1.5));
+
+const sun = new THREE.DirectionalLight(0xffedcf, 2.2);
+sun.position.set(-35, 60, 25);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -60;
+sun.shadow.camera.right = 60;
+sun.shadow.camera.top = 60;
+sun.shadow.camera.bottom = -60;
+scene.add(sun);
+
+// Sol
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(250, 250),
+  new THREE.MeshStandardMaterial({ color: 0x68766b, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.12;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Route
+const road = new THREE.Mesh(
+  new THREE.PlaneGeometry(250, 15),
+  new THREE.MeshStandardMaterial({ color: 0x34383c, roughness: 0.95 })
+);
+road.rotation.x = -Math.PI / 2;
+road.position.set(0, -0.08, 22);
+road.receiveShadow = true;
+scene.add(road);
+
+// Marquages routiers
+for (let x = -115; x < 120; x += 13) {
+  const line = new THREE.Mesh(
+    new THREE.PlaneGeometry(6, 0.18),
+    new THREE.MeshBasicMaterial({ color: 0xe8dfb9 })
+  );
+  line.rotation.x = -Math.PI / 2;
+  line.position.set(x, -0.045, 22);
+  scene.add(line);
+}
+
+// Trottoir
+const sidewalk = new THREE.Mesh(
+  new THREE.BoxGeometry(250, 0.25, 3),
+  new THREE.MeshStandardMaterial({ color: 0x999a96, roughness: 1 })
+);
+sidewalk.position.set(0, 0, 12);
+sidewalk.receiveShadow = true;
+scene.add(sidewalk);
+
+// Chargement du vrai bâtiment GLB
+const loader = new THREE.GLTFLoader();
+
+loader.load(
+  "./city-block-filler.glb",
+  function(gltf) {
+    const building = gltf.scene;
+
+    building.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(building);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    // Taille automatique du modèle
+    const largest = Math.max(size.x, size.y, size.z);
+    const scale = 24 / largest;
+    building.scale.setScalar(scale);
+
+    // Centrage et pose au sol
+    building.position.x = -center.x * scale;
+    building.position.z = -center.z * scale;
+    building.position.y = -box.min.y * scale;
+
+    building.traverse(function(obj) {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+
+    scene.add(building);
+    statusText.textContent = "Bâtiment 3D chargé !";
+  },
+  function(xhr) {
+    if (xhr.total) {
+      statusText.textContent =
+        "Chargement : " + Math.round(xhr.loaded / xhr.total * 100) + "%";
+    }
+  },
+  function(error) {
+    console.error(error);
+    statusText.textContent =
+      "Erreur de chargement. Vérifie le serveur et le fichier GLB.";
+  }
+);
+
+// Petit personnage provisoire
+const player = new THREE.Group();
+
+const body = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.55, 1.1, 4, 8),
+  new THREE.MeshStandardMaterial({ color: 0x292c38, roughness: 0.8 })
+);
+body.position.y = 1.15;
+body.castShadow = true;
+player.add(body);
+
+const head = new THREE.Mesh(
+  new THREE.SphereGeometry(0.35, 20, 16),
+  new THREE.MeshStandardMaterial({ color: 0xd6a47f })
+);
+head.position.y = 2.05;
+player.add(head);
+
+player.position.set(18, 0, 0);
+scene.add(player);
+
+// Déplacements
+const keys = {};
+window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const speed = 0.16;
+  let dx = 0, dz = 0;
+
+  if (keys["z"] || keys["arrowup"]) dz -= 1;
+  if (keys["s"] || keys["arrowdown"]) dz += 1;
+  if (keys["q"] || keys["arrowleft"]) dx -= 1;
+  if (keys["d"] || keys["arrowright"]) dx += 1;
+
+  if (dx || dz) {
+    const length = Math.hypot(dx, dz);
+    dx /= length;
+    dz /= length;
+    player.position.x += dx * speed;
+    player.position.z += dz * speed;
+    player.rotation.y = Math.atan2(dx, dz);
+  }
+
+  // Caméra qui suit le personnage
+  const target = new THREE.Vector3(
+    player.position.x + 12,
+    10,
+    player.position.z + 17
+  );
+  camera.position.lerp(target, 0.055);
+  camera.lookAt(player.position.x, 1.2, player.position.z);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
